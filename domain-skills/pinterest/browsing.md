@@ -6,6 +6,8 @@ Field-tested against `www.pinterest.com` on 2026-07-25 with Chrome CDP + the har
 
 - **Signed-out search works.** The grid renders and the internal search API answers even when the
   header says "You are signed out". No login wall for `/search/pins/`.
+- **Signed in, follow the graph instead of firing more queries.** Related-pin feeds and whole
+  curated boards return better-matched, more visually coherent sets than any keyword search.
 - **Use the internal JSON API, not the DOM.** One call returns ~50 pins with true original
   dimensions and a machine-generated alt-text description. DOM scraping returns ~11 pins per
   viewport and forces a scroll loop.
@@ -70,6 +72,49 @@ Pagination ends when `bookmark` is empty or `-end-`. Note `data` is an **object*
 `auto_alt_text` is good enough to filter subject matter and junk, but **it is not reliable for
 people** — frames with clearly visible faces are regularly described without any person word.
 Verify visually before trusting a no-faces filter.
+
+---
+
+## Other resources on the same transport (signed in)
+
+All take the same two required headers; only `source_url` and `x-pinterest-pws-handler` change.
+
+| Goal | Resource | `options` | handler |
+|---|---|---|---|
+| Search pins | `BaseSearchResource` | `{query, scope:"pins", bookmarks, page_size}` | `www/search/[scope].js` |
+| **Search boards** | `BaseSearchResource` | `{query, scope:"boards", ...}` | `www/search/[scope].js` |
+| **Whole board** | `BoardFeedResource` | `{board_id, page_size}` | `www/[username]/[slug].js` |
+| **Related pins** | `RelatedPinFeedResource` | `{pin: "<pin id>", page_size}` | `www/pin/[id].js` |
+
+Notes that cost time:
+
+- `BoardFeedResource` needs **`board_id`**. Passing `board_url` instead returns HTTP 400.
+  `source_url` should be the board's path (`/<user>/<board-slug>/`).
+- The related-pin resource is `RelatedPinFeedResource`. **`RelatedModulesResource` 404s** — it is
+  the obvious guess and it is wrong.
+- Board search results carry `pin_count`, so you can filter to boards worth harvesting before
+  spending a request on each.
+- Related feeds occasionally return `data: null` for a given seed pin; treat it as a skip, not a
+  failure, and move on to the next seed.
+
+### Board search drifts off-topic
+
+Board titles are user-written, so a topical board search matches the *words*, not the imagery.
+Observed: "laundry day aesthetic" returns laundry-**room renovation** boards; "hands holding coffee
+mug" returns **ceramics retail** boards (mugs for sale, no hands); "moody film photography home"
+returns **wedding and engagement portfolios**. Board search is excellent when the aesthetic itself
+is the board name people use ("night drive aesthetic" → six dedicated boards, ~340 pins); it is
+close to useless when the subject is a household object.
+
+### Finding the board a pin belongs to
+
+The pin detail page embeds it. `__PWS_DATA__` does **not** carry redux state — the pin object is in
+a different script tag:
+
+```js
+JSON.parse(document.getElementById('__PWS_INITIAL_PROPS__').textContent)
+  .initialReduxState.pins['<pin id>']            // → { images, board:{name,url,id}, auto_alt_text, link, ... }
+```
 
 ---
 
@@ -166,3 +211,20 @@ The `img.alt` attribute in the DOM carries the same `auto_alt_text` string the A
   **quote text burned into the image**. `auto_alt_text` rarely mentions it. If you need clean plates,
   inspect at full resolution — small light-on-light captions are invisible in a contact sheet.
 - Watermarks (e.g. Xiaohongshu IDs) appear in corners at low contrast; same problem, same fix.
+- **`domain` and `link` are the only provenance you get, and they matter.** A frame that looks like
+  a nice unmade bed turned out to be an H&M catalogue shot — `domain: www2.hm.com` with a
+  `go.skimresources.com` affiliate link. Retail catalogue and brand product photography is common in
+  "aesthetic" results and is invisible in the image itself. Check `domain`/`link` before assuming a
+  pin is an amateur snap.
+
+## Instrumenting the page (what does not work)
+
+If you try to discover these endpoints by watching traffic rather than reading this file:
+
+- **Patching `window.fetch` captures nothing.** Pinterest's app issues these as XHR, not `fetch`.
+- **CDP `Network.enable` + the harness's `drain_events()` returns zero events.** The daemon does not
+  forward them, so a request log built that way comes back empty and looks like the page made no
+  calls at all.
+
+Probing candidate resource names directly against the API (as tabulated above) is faster than
+either.
