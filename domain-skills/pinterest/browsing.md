@@ -215,7 +215,19 @@ The `img.alt` attribute in the DOM carries the same `auto_alt_text` string the A
   a nice unmade bed turned out to be an H&M catalogue shot — `domain: www2.hm.com` with a
   `go.skimresources.com` affiliate link. Retail catalogue and brand product photography is common in
   "aesthetic" results and is invisible in the image itself. Check `domain`/`link` before assuming a
-  pin is an amateur snap.
+  pin is an amateur snap. A cheap reject list that removes most of it:
+
+  ```
+  shop store product collection etsy amazon amzn hm.com zara ikea westelm
+  target walmart shopify skimresources rstyle ltk ceramics
+  ```
+
+- **Object-noun searches return the object for sale, not the object in a life.** Anything of the
+  form "<household object> aesthetic" is heavily contaminated by e-commerce: querying around mugs and
+  coffee returns overwhelmingly studio ceramics on seamless white. If you need the object *in situ*,
+  search the room, the light or the time of day instead of the object, and reject frames that are a
+  centred object on a near-white background (very high brightness + near-zero saturation is a good
+  automatic proxy for "product shot").
 
 ## Instrumenting the page (what does not work)
 
